@@ -1,6 +1,6 @@
-TESTS = test_TEST
+TESTS = shrink_TEST
 
-test_TEST_SOURCES = main.cc oneof.cc
-test_TEST_LIBRARIES = -lgtest -lpthread
+shrink_TEST_SOURCES = main.cc oneof.cc
+shrink_TEST_LIBRARIES = -lgtest -lpthread
 CPPFLAGS = -Iinclude
 
