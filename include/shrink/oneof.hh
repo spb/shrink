@@ -5,8 +5,8 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include <cstdlib>
-#include <iostream>
+
+#include <shrink/storage_policy.hh>
 
 namespace shrink
 {
@@ -79,8 +79,8 @@ namespace shrink
             Underlying_ & underlying;
             std::function<Result_ ()> execute;
 
-            OneOfVisitorWrapperVisit(Underlying_ & u) :
-                underlying(u)
+            OneOfVisitorWrapperVisit(Underlying_ & u)
+                : underlying(u)
             {
             }
         };
@@ -89,8 +89,8 @@ namespace shrink
         struct OneOfVisitorWrapperVisit<Visitor_, Underlying_, Result_, Type_, Rest_...> :
             OneOfVisitorWrapperVisit<Visitor_, Underlying_, Result_, Rest_...>
         {
-            OneOfVisitorWrapperVisit(Underlying_ & u) :
-                OneOfVisitorWrapperVisit<Visitor_, Underlying_, Result_, Rest_...>(u)
+            OneOfVisitorWrapperVisit(Underlying_ & u)
+                : OneOfVisitorWrapperVisit<Visitor_, Underlying_, Result_, Rest_...>(u)
             {
             }
 
@@ -109,8 +109,8 @@ namespace shrink
         struct OneOfVisitorWrapper :
             OneOfVisitorWrapperVisit<OneOfVisitor<Types_...>, Underlying_, Result_, Types_...>
         {
-            OneOfVisitorWrapper(Underlying_ & u) :
-                OneOfVisitorWrapperVisit<OneOfVisitor<Types_...>, Underlying_, Result_, Types_...>(u)
+            OneOfVisitorWrapper(Underlying_ & u)
+                : OneOfVisitorWrapperVisit<OneOfVisitor<Types_...>, Underlying_, Result_, Types_...>(u)
             {
             }
         };
@@ -122,6 +122,7 @@ namespace shrink
 
             virtual void accept(OneOfVisitor<Types_...> &) = 0;
             virtual void accept(OneOfVisitor<const Types_...> &) const = 0;
+            virtual OneOfValueBase * clone() = 0;
         };
 
         template <typename... Types_>
@@ -133,8 +134,13 @@ namespace shrink
         {
             Type_ value;
 
-            OneOfValue(const Type_ & type) :
-                value(type)
+            OneOfValue(const Type_ & type)
+                : value(type)
+            {
+            }
+
+            OneOfValue(const OneOfValue & other)
+                : value(other.value)
             {
             }
 
@@ -147,26 +153,84 @@ namespace shrink
             {
                 static_cast<OneOfVisitorVisit<const Type_> &>(visitor).visit(value);
             }
+
+            virtual OneOfValue * clone()
+            {
+                return new OneOfValue(*this);
+            }
+        };
+
+        template <typename Policy_, typename Value_> struct OneOfStorage;
+
+        template <typename Value_>
+        struct OneOfStorage<shrink::storage_policy::unique_storage, Value_>
+        {
+            std::unique_ptr<Value_> _storage;
+
+            Value_ & operator*() { return *_storage; }
+            const Value_ & operator*() const { return *_storage; }
+
+            OneOfStorage(Value_ * v) : _storage(v) { }
+            OneOfStorage(OneOfStorage && other) : _storage(std::move(other._storage)) { }
+            OneOfStorage(const OneOfStorage &) = delete;
+            OneOfStorage & operator= (const OneOfStorage &) = delete;
+
+            void reset(Value_* v) { _storage.reset(v); }
+        };
+
+        template <typename Value_>
+        struct OneOfStorage<shrink::storage_policy::shared_storage, Value_>
+        {
+            std::shared_ptr<Value_> _storage;
+
+            Value_ & operator*() { return *_storage; }
+            const Value_ & operator*() const { return *_storage; }
+
+            OneOfStorage(Value_ * v) : _storage(v) { }
+            OneOfStorage(OneOfStorage && other) : _storage(std::move(other._storage)) { }
+            OneOfStorage(const OneOfStorage & other) : _storage(other._storage) { }
+            OneOfStorage & operator= (const OneOfStorage & other) { _storage = other._storage; }
+
+            void reset(Value_* v) { _storage.reset(v); }
+        };
+
+        template <typename Value_>
+        struct OneOfStorage<shrink::storage_policy::clone_storage, Value_>
+        {
+            std::unique_ptr<Value_> _storage;
+
+            Value_ & operator*() { return *_storage; }
+            const Value_ & operator*() const { return *_storage; }
+
+            OneOfStorage(Value_ * v) : _storage(v) { }
+            OneOfStorage(OneOfStorage && other) : _storage(std::move(other._storage)) { }
+            OneOfStorage(const OneOfStorage & other) : _storage(other._storage->clone()) { }
+            OneOfStorage & operator= (const OneOfStorage & other) { _storage = other._storage->clone(); }
+
+            void reset(Value_* v) { _storage.reset(v); }
         };
     }
 
-    template <typename... Types_>
+    template <typename Policy_, typename... Types_>
     class OneOf
     {
         private:
-            std::unique_ptr<oneof_internal::OneOfValueBase<Types_...> > _value;
+            oneof_internal::OneOfStorage<Policy_, oneof_internal::OneOfValueBase<Types_...> > _value;
 
         public:
             template <typename Type_>
-            OneOf(const Type_ & value) :
-                _value(new oneof_internal::OneOfValue<typename oneof_internal::SelectOneOfType<Type_, Types_...>::Type, Types_...>{value})
+            OneOf(const Type_ & value)
+                : _value(new oneof_internal::OneOfValue<typename oneof_internal::SelectOneOfType<Type_, Types_...>::Type, Types_...>{value})
             {
             }
 
-            OneOf(const OneOf & other) = delete;
+            OneOf(const OneOf & other)
+                : _value(other._value)
+            {
+            }
 
-            OneOf(OneOf && other) :
-                _value(std::move(other._value))
+            OneOf(OneOf && other)
+                : _value(std::move(other._value))
             {
             }
 
@@ -177,7 +241,10 @@ namespace shrink
                 return *this;
             }
 
-            OneOf & operator= (const OneOf & other) = delete;
+            OneOf & operator= (const OneOf & other)
+            {
+                _value = other._value;
+            }
 
             OneOf & operator= (OneOf && other)
             {
@@ -201,14 +268,14 @@ namespace shrink
         template <typename Visitor_, typename Result_, typename OneOf_>
         struct OneOfVisitorWrapperTypeFinder;
 
-        template <typename Visitor_, typename Result_, typename... Types_>
-        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, const OneOf<Types_...> &>
+        template <typename Visitor_, typename Result_, typename Policy_, typename... Types_>
+        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, const OneOf<Policy_, Types_...> &>
         {
             typedef OneOfVisitorWrapper<Visitor_, Result_, const Types_...> Type;
         };
 
-        template <typename Visitor_, typename Result_, typename... Types_>
-        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, OneOf<Types_...> &>
+        template <typename Visitor_, typename Result_, typename Policy_, typename... Types_>
+        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, OneOf<Policy_, Types_...> &>
         {
             typedef OneOfVisitorWrapper<Visitor_, Result_, Types_...> Type;
         };
@@ -243,9 +310,9 @@ namespace shrink
         {
             Func_ & func;
 
-            LambdaVisitor(Func_ & f, Rest_ & ... rest) :
-                LambdaVisitor<Result_, Rest_...>(rest...),
-                func(f)
+            LambdaVisitor(Func_ & f, Rest_ & ... rest)
+                : LambdaVisitor<Result_, Rest_...>(rest...),
+                  func(f)
             {
             }
 
@@ -267,14 +334,14 @@ namespace shrink
                 oneof_internal::LambdaVisitor<typename oneof_internal::LambdaParameterTypes<FirstFunc_>::ReturnType, FirstFunc_, Rest_...>(first_func, rest...));
     }
 
-    template <typename Result_, typename... Types_>
-    const Result_ & extract(const OneOf<Types_...> & oneof)
+    template <typename Result_, typename Policy_, typename... Types_>
+    const Result_ & extract(const OneOf<Policy_, Types_...> & oneof)
     {
         return when(oneof, [](const Result_ & r) -> const Result_ & { return r; });
     }
 
-    template <typename Result_, typename... Types_>
-    Result_ & extract(OneOf<Types_...>& oneof)
+    template <typename Result_, typename Policy_, typename... Types_>
+    Result_ & extract(OneOf<Policy_, Types_...>& oneof)
     {
         return when(oneof, [](Result_ & r) -> Result_ & { return r; });
     }

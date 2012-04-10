@@ -1,13 +1,14 @@
-#include "oneof.hh"
+#include <shrink/oneof.hh>
 
 #include <gtest/gtest.h>
 
 using shrink::OneOf;
 using shrink::when;
+using namespace shrink::storage_policy;
 
 TEST(OneOfTest, OneOfTest)
 {
-    OneOf<int, std::string> o1(123);
+    OneOf<unique_storage, int, std::string> o1(123);
     int result = 0;
 
     when(o1,
@@ -47,7 +48,7 @@ struct Derived3 : Derived1
 
 TEST(OneOfTest, DerivedTypes)
 {
-    OneOf<Base, Derived1, Derived2, Derived3> one((Base()));
+    OneOf<unique_storage, Base, Derived1, Derived2, Derived3> one((Base()));
     int result = -1;
 
     result = when(one,
@@ -100,7 +101,7 @@ struct Derived4 : Base
 
 TEST(OneOfTest, Extract)
 {
-    OneOf<Base, Derived1, Derived4> oo((Base()));
+    OneOf<unique_storage, Base, Derived1, Derived4> oo((Base()));
 
     Base & b = shrink::extract<Base>(oo);
     ASSERT_EQ(1, b.f());
