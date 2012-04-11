@@ -48,7 +48,7 @@ struct Derived3 : Derived1
 
 TEST(OneOfTest, DerivedTypes)
 {
-    OneOf<unique_storage, Base, Derived1, Derived2, Derived3> one((Base()));
+    OneOf<Base, Derived1, Derived2, Derived3> one((Base()));
     int result = -1;
 
     result = when(one,
@@ -101,7 +101,7 @@ struct Derived4 : Base
 
 TEST(OneOfTest, Extract)
 {
-    OneOf<unique_storage, Base, Derived1, Derived4> oo((Base()));
+    OneOf<Base, Derived1, Derived4> oo((Base()));
 
     Base & b = shrink::extract<Base>(oo);
     ASSERT_EQ(1, b.f());
@@ -118,14 +118,43 @@ TEST(OneOfTest, Extract)
     ASSERT_EQ(23, b3.f());
 }
 
-/*
-TEST(OneOfTest, DerivedPointerTypes)
+TEST(OneOfTest, SharedStorage)
 {
-    OneOf<Base*, Derived1*, Derived2*, Derived3*> one(new Base());
-    int result = -1;
+    OneOf<shared_storage, Base, Derived1, Derived4> o1((Base()));
 
-    result = when(one,
-            [](Base *b) { return 1; }
-        );
+    Base & b = shrink::extract<Base>(o1);
+    ASSERT_EQ(1, b.f());
+
+    o1 = Derived4(35);
+    Base & b1 = shrink::extract<Base>(o1);
+    ASSERT_EQ(35, b1.f());
+
+    OneOf<shared_storage, Base, Derived1, Derived4> o2(o1);
+    Base & b2 = shrink::extract<Base>(o2);
+    ASSERT_EQ(35, b2.f());
+
+    when(o1, [](Base &) {}, [](Derived4 & d) { d.i = 23; });
+    ASSERT_EQ(23, b2.f());
 }
-*/
+
+TEST(OneOfTest, CloneStorage)
+{
+    OneOf<clone_storage, Base, Derived1, Derived4> o1((Base()));
+
+    Base & b = shrink::extract<Base>(o1);
+    ASSERT_EQ(1, b.f());
+
+    o1 = Derived4(35);
+    Base & b1 = shrink::extract<Base>(o1);
+    ASSERT_EQ(35, b1.f());
+
+    OneOf<clone_storage, Base, Derived1, Derived4> o2(o1);
+    Base & b2 = shrink::extract<Base>(o2);
+    ASSERT_EQ(35, b2.f());
+
+    when(o1, [](Base &) {}, [](Derived4 & d) { d.i = 23; });
+    ASSERT_EQ(35, b2.f());
+    ASSERT_EQ(23, b1.f());
+}
+
+
