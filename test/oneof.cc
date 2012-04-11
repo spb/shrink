@@ -8,7 +8,7 @@ using namespace shrink::storage_policy;
 
 TEST(OneOfTest, OneOfTest)
 {
-    OneOf<unique_storage, int, std::string> o1(123);
+    OneOf<int, std::string> o1(123);
     int result = 0;
 
     when(o1,

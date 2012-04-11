@@ -209,73 +209,70 @@ namespace shrink
 
             void reset(Value_* v) { _storage.reset(v); }
         };
-    }
 
-    template <typename Policy_, typename... Types_>
-    class OneOf
-    {
-        private:
-            oneof_internal::OneOfStorage<Policy_, oneof_internal::OneOfValueBase<Types_...> > _value;
+        template <typename Policy_, typename... Types_>
+        class OneOfImpl
+        {
+            private:
+                oneof_internal::OneOfStorage<Policy_, oneof_internal::OneOfValueBase<Types_...> > _value;
 
-        public:
-            template <typename Type_>
-            OneOf(const Type_ & value)
-                : _value(new oneof_internal::OneOfValue<typename oneof_internal::SelectOneOfType<Type_, Types_...>::Type, Types_...>{value})
-            {
-            }
+            public:
+                template <typename Type_>
+                OneOfImpl(const Type_ & value)
+                    : _value(new oneof_internal::OneOfValue<typename oneof_internal::SelectOneOfType<Type_, Types_...>::Type, Types_...>{value})
+                {
+                }
 
-            OneOf(const OneOf & other)
-                : _value(other._value)
-            {
-            }
+                OneOfImpl(const OneOfImpl & other)
+                    : _value(other._value)
+                {
+                }
 
-            OneOf(OneOf && other)
-                : _value(std::move(other._value))
-            {
-            }
+                OneOfImpl(OneOfImpl && other)
+                    : _value(std::move(other._value))
+                {
+                }
 
-            template <typename Type_>
-            OneOf & operator= (const Type_ & value)
-            {
-                _value.reset(new oneof_internal::OneOfValue<typename oneof_internal::SelectOneOfType<Type_, Types_...>::Type, Types_...>{value});
-                return *this;
-            }
+                template <typename Type_>
+                OneOfImpl & operator= (const Type_ & value)
+                {
+                    _value.reset(new oneof_internal::OneOfValue<typename oneof_internal::SelectOneOfType<Type_, Types_...>::Type, Types_...>{value});
+                    return *this;
+                }
 
-            OneOf & operator= (const OneOf & other)
-            {
-                _value = other._value;
-            }
+                OneOfImpl & operator= (const OneOfImpl & other)
+                {
+                    _value = other._value;
+                }
 
-            OneOf & operator= (OneOf && other)
-            {
-                _value = std::move(other._value);
-                return *this;
-            }
+                OneOfImpl & operator= (OneOfImpl && other)
+                {
+                    _value = std::move(other._value);
+                    return *this;
+                }
 
-            oneof_internal::OneOfValueBase<Types_...> & value()
-            {
-                return *_value;
-            }
+                oneof_internal::OneOfValueBase<Types_...> & value()
+                {
+                    return *_value;
+                }
 
-            const oneof_internal::OneOfValueBase<Types_...> & value() const
-            {
-                return *_value;
-            }
-    };
+                const oneof_internal::OneOfValueBase<Types_...> & value() const
+                {
+                    return *_value;
+                }
+        };
 
-    namespace oneof_internal
-    {
         template <typename Visitor_, typename Result_, typename OneOf_>
         struct OneOfVisitorWrapperTypeFinder;
 
         template <typename Visitor_, typename Result_, typename Policy_, typename... Types_>
-        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, const OneOf<Policy_, Types_...> &>
+        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, const OneOfImpl<Policy_, Types_...> &>
         {
             typedef OneOfVisitorWrapper<Visitor_, Result_, const Types_...> Type;
         };
 
         template <typename Visitor_, typename Result_, typename Policy_, typename... Types_>
-        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, OneOf<Policy_, Types_...> &>
+        struct OneOfVisitorWrapperTypeFinder<Visitor_, Result_, OneOfImpl<Policy_, Types_...> &>
         {
             typedef OneOfVisitorWrapper<Visitor_, Result_, Types_...> Type;
         };
@@ -323,7 +320,28 @@ namespace shrink
 
             using LambdaVisitor<Result_, Rest_...>::visit;
         };
+
+        // Default storage policy for OneOf is defined here
+        template <typename... Types_> struct OneOfTypeFinder
+        {
+            typedef OneOfImpl<shrink::storage_policy::unique_storage, Types_...> Type;
+        };
+
+        template <typename... Types_> struct OneOfTypeFinder<shrink::storage_policy::unique_storage, Types_...>
+        {
+            typedef OneOfImpl<shrink::storage_policy::unique_storage, Types_...> Type;
+        };
+        template <typename... Types_> struct OneOfTypeFinder<shrink::storage_policy::shared_storage, Types_...>
+        {
+            typedef OneOfImpl<shrink::storage_policy::shared_storage, Types_...> Type;
+        };
+        template <typename... Types_> struct OneOfTypeFinder<shrink::storage_policy::clone_storage, Types_...>
+        {
+            typedef OneOfImpl<shrink::storage_policy::clone_storage, Types_...> Type;
+        };
     }
+
+    template <typename... Types_> using OneOf = typename oneof_internal::OneOfTypeFinder<Types_...>::Type;
 
     template <typename Val_, typename FirstFunc_, typename... Rest_>
     typename oneof_internal::LambdaParameterTypes<FirstFunc_>::ReturnType
@@ -335,13 +353,13 @@ namespace shrink
     }
 
     template <typename Result_, typename Policy_, typename... Types_>
-    const Result_ & extract(const OneOf<Policy_, Types_...> & oneof)
+    const Result_ & extract(const oneof_internal::OneOfImpl<Policy_, Types_...> & oneof)
     {
         return when(oneof, [](const Result_ & r) -> const Result_ & { return r; });
     }
 
     template <typename Result_, typename Policy_, typename... Types_>
-    Result_ & extract(OneOf<Policy_, Types_...>& oneof)
+    Result_ & extract(oneof_internal::OneOfImpl<Policy_, Types_...>& oneof)
     {
         return when(oneof, [](Result_ & r) -> Result_ & { return r; });
     }
